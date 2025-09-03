@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Candidate Profile Playground</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/config.js"></script>
+    <script>
+      // Define a loader error hook early so <script onerror> can use it
+      window._scriptLoadError = function (name, e) {
+        var pre = document.createElement('pre');
+        pre.style.color = '#ef4444';
+        pre.style.padding = '12px';
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.textContent = 'Failed to load ' + name + ' script.\n' +
+          'This often happens if the CDN is blocked.\n' +
+          'Check your network or use a local bundle.';
+        document.body.prepend(pre);
+        console.error('Script load failed:', name, e);
+      };
+    </script>
+    <script crossorigin="anonymous" defer src="https://unpkg.com/react@18/umd/react.development.js"
+      onerror="_scriptLoadError('react', event)"></script>
+    <script crossorigin="anonymous" defer src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
+      onerror="_scriptLoadError('react-dom', event)"></script>
+    <script crossorigin="anonymous" defer src="https://unpkg.com/babel-standalone@6/babel.min.js"
+      onerror="_scriptLoadError('babel-standalone', event)"></script>
+  </head>
+  <body>
+    <noscript>
+      <div class="card" style="margin:16px;color:#ef4444">This app requires JavaScript to run.</div>
+    </noscript>
+    <div id="root"></div>
+    <script>
+      // Basic error surface so a blank page shows something useful
+      window.addEventListener('error', function (e) {
+        var msg = (e.error && e.error.stack) || e.message || String(e);
+        var pre = document.createElement('pre');
+        pre.style.color = '#ef4444';
+        pre.style.padding = '12px';
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.textContent = 'Runtime error: ' + msg;
+        document.body.insertBefore(pre, document.getElementById('root'));
+      });
+      setTimeout(function () {
+        var root = document.getElementById('root');
+        if (!root || !root.firstChild) {
+          var div = document.createElement('div');
+          div.className = 'card';
+          div.style.margin = '16px';
+          div.innerHTML = '<b>Still loading...</b><br/>If the page is blank, check the browser console. If CDN is blocked, the React UI may not load. The API should be available at <code>/health</code>.';
+          document.body.insertBefore(div, root);
+        }
+      }, 2000);
+    </script>
+    <script type="text/babel">
+      const API = (window.API_BASE_URL || '').replace(/\/$/, '');
+
+      async function apiGet(path) {
+        const res = await fetch(`${API}${path}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        return res.json();
+      }
+
+      async function apiRequest(path, { method = 'GET', body } = {}) {
+        const res = await fetch(`${API}${path}`, {
+          method,
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (res.status === 404) return { _notFound: true };
+        if (!res.ok) {
+          let msg = `Request failed: ${res.status}`;
+          try {
+            const j = await res.json();
+            if (j && j.error) msg += ` - ${j.error}`;
+          } catch (e) {}
+          throw new Error(msg);
+        }
+        return res.status === 204 ? null : res.json();
+      }
+
+      function useAsync(fn, deps = []) {
+        const [state, setState] = React.useState({ loading: true, error: null, data: null });
+        React.useEffect(() => {
+          let alive = true;
+          setState({ loading: true, error: null, data: null });
+          fn().then(
+            (data) => alive && setState({ loading: false, error: null, data }),
+            (error) => alive && setState({ loading: false, error, data: null })
+          );
+          return () => { alive = false; };
+        }, deps);
+        return state;
+      }
+
+      function CreateProfileForm({ onCreated }) {
+        const [name, setName] = React.useState('');
+        const [email, setEmail] = React.useState('');
+        const [github, setGithub] = React.useState('');
+        const [linkedin, setLinkedin] = React.useState('');
+        const [portfolio, setPortfolio] = React.useState('');
+        const [skillsCsv, setSkillsCsv] = React.useState('');
+        const [projects, setProjects] = React.useState([]);
+        const [submitting, setSubmitting] = React.useState(false);
+        const [error, setError] = React.useState(null);
+
+        function addProject() {
+          setProjects((arr) => [...arr, { title: '', description: '', skillsCsv: '' }]);
+        }
+        function updateProject(i, patch) {
+          setProjects((arr) => arr.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+        }
+        function removeProject(i) {
+          setProjects((arr) => arr.filter((_, idx) => idx !== i));
+        }
+
+        async function submit(e) {
+          e.preventDefault();
+          setSubmitting(true); setError(null);
+          try {
+            const payload = {
+              name,
+              email,
+              skills: skillsCsv.split(',').map((s) => s.trim()).filter(Boolean),
+              links: { github, linkedin, portfolio },
+              projects: projects.map((p) => ({
+                title: p.title,
+                description: p.description,
+                skills: (p.skillsCsv || '').split(',').map((s) => s.trim()).filter(Boolean),
+                links: [],
+              })),
+            };
+            const created = await apiRequest('/api/profile', { method: 'POST', body: payload });
+            onCreated && onCreated(created);
+          } catch (err) {
+            setError(err);
+          } finally {
+            setSubmitting(false);
+          }
+        }
+
+        return (
+          <div className="card">
+            <h2>Create Your Profile</h2>
+            {error && <p className="error">{String(error)}</p>}
+            <form onSubmit={submit} className="form">
+              <div className="grid">
+                <label>
+                  <div>Name</div>
+                  <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Your Name" />
+                </label>
+                <label>
+                  <div>Email</div>
+                  <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                </label>
+              </div>
+              <div className="grid">
+                <label>
+                  <div>GitHub</div>
+                  <input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="https://github.com/you" />
+                </label>
+                <label>
+                  <div>LinkedIn</div>
+                  <input value={linkedin} onChange={(e) => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/you" />
+                </label>
+                <label>
+                  <div>Portfolio</div>
+                  <input value={portfolio} onChange={(e) => setPortfolio(e.target.value)} placeholder="https://your.site" />
+                </label>
+              </div>
+              <label>
+                <div>Skills (comma separated)</div>
+                <input value={skillsCsv} onChange={(e) => setSkillsCsv(e.target.value)} placeholder="react, node, mongodb" />
+              </label>
+
+              <div className="projects">
+                <div className="item-header" style={{marginTop: '8px'}}>
+                  <h3 style={{margin: 0}}>Projects</h3>
+                  <button type="button" onClick={addProject}>Add Project</button>
+                </div>
+                {projects.map((p, i) => (
+                  <div key={i} className="item">
+                    <div className="grid">
+                      <label>
+                        <div>Title</div>
+                        <input value={p.title} onChange={(e) => updateProject(i, { title: e.target.value })} placeholder="Project Title" />
+                      </label>
+                      <label>
+                        <div>Skills (CSV)</div>
+                        <input value={p.skillsCsv} onChange={(e) => updateProject(i, { skillsCsv: e.target.value })} placeholder="react, node" />
+                      </label>
+                    </div>
+                    <label>
+                      <div>Description</div>
+                      <input value={p.description} onChange={(e) => updateProject(i, { description: e.target.value })} placeholder="Short description" />
+                    </label>
+                    <div>
+                      <button type="button" onClick={() => removeProject(i)}>Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{marginTop: '10px'}}>
+                <button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Profile'}</button>
+              </div>
+            </form>
+          </div>
+        );
+      }
+
+      function EditProfileForm({ profile, onSaved, onCancel }) {
+        const p = profile || {};
+        const [name, setName] = React.useState(p.name || '');
+        const [email, setEmail] = React.useState(p.email || '');
+        const [github, setGithub] = React.useState((p.links && p.links.github) || '');
+        const [linkedin, setLinkedin] = React.useState((p.links && p.links.linkedin) || '');
+        const [portfolio, setPortfolio] = React.useState((p.links && p.links.portfolio) || '');
+        const [skillsCsv, setSkillsCsv] = React.useState((p.skills || []).join(', '));
+        const [projects, setProjects] = React.useState((p.projects || []).map(x => ({
+          title: x.title || '',
+          description: x.description || '',
+          skillsCsv: (x.skills || []).join(', '),
+        })));
+        const [submitting, setSubmitting] = React.useState(false);
+        const [error, setError] = React.useState(null);
+
+        function addProject() {
+          setProjects((arr) => [...arr, { title: '', description: '', skillsCsv: '' }]);
+        }
+        function updateProject(i, patch) {
+          setProjects((arr) => arr.map((pr, idx) => (idx === i ? { ...pr, ...patch } : pr)));
+        }
+        function removeProject(i) {
+          setProjects((arr) => arr.filter((_, idx) => idx !== i));
+        }
+
+        async function submit(e) {
+          e.preventDefault();
+          setSubmitting(true); setError(null);
+          try {
+            const payload = {
+              name,
+              email,
+              education: p.education || [],
+              work: p.work || [],
+              skills: skillsCsv.split(',').map((s) => s.trim()).filter(Boolean),
+              links: { github, linkedin, portfolio },
+              projects: projects.map((pr) => ({
+                title: pr.title,
+                description: pr.description,
+                skills: (pr.skillsCsv || '').split(',').map((s) => s.trim()).filter(Boolean),
+                links: [],
+              })),
+            };
+            const updated = await apiRequest('/api/profile', { method: 'PUT', body: payload });
+            onSaved && onSaved(updated);
+          } catch (err) {
+            setError(err);
+          } finally {
+            setSubmitting(false);
+          }
+        }
+
+        return (
+          <div className="card">
+            <div className="item-header"><h2 style={{margin:0}}>Edit Profile</h2><div>
+              <button type="button" onClick={onCancel}>Cancel</button>
+            </div></div>
+            {error && <p className="error">{String(error)}</p>}
+            <form onSubmit={submit} className="form">
+              <div className="grid">
+                <label>
+                  <div>Name</div>
+                  <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Your Name" />
+                </label>
+                <label>
+                  <div>Email</div>
+                  <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                </label>
+              </div>
+              <div className="grid">
+                <label>
+                  <div>GitHub</div>
+                  <input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="https://github.com/you" />
+                </label>
+                <label>
+                  <div>LinkedIn</div>
+                  <input value={linkedin} onChange={(e) => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/you" />
+                </label>
+                <label>
+                  <div>Portfolio</div>
+                  <input value={portfolio} onChange={(e) => setPortfolio(e.target.value)} placeholder="https://your.site" />
+                </label>
+              </div>
+              <label>
+                <div>Skills (comma separated)</div>
+                <input value={skillsCsv} onChange={(e) => setSkillsCsv(e.target.value)} placeholder="react, node, mongodb" />
+              </label>
+
+              <div className="projects">
+                <div className="item-header" style={{marginTop: '8px'}}>
+                  <h3 style={{margin: 0}}>Projects</h3>
+                  <button type="button" onClick={addProject}>Add Project</button>
+                </div>
+                {projects.map((pr, i) => (
+                  <div key={i} className="item">
+                    <div className="grid">
+                      <label>
+                        <div>Title</div>
+                        <input value={pr.title} onChange={(e) => updateProject(i, { title: e.target.value })} placeholder="Project Title" />
+                      </label>
+                      <label>
+                        <div>Skills (CSV)</div>
+                        <input value={pr.skillsCsv} onChange={(e) => updateProject(i, { skillsCsv: e.target.value })} placeholder="react, node" />
+                      </label>
+                    </div>
+                    <label>
+                      <div>Description</div>
+                      <input value={pr.description} onChange={(e) => updateProject(i, { description: e.target.value })} placeholder="Short description" />
+                    </label>
+                    <div>
+                      <button type="button" onClick={() => removeProject(i)}>Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{marginTop: '10px'}}>
+                <button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Save Changes'}</button>
+              </div>
+            </form>
+          </div>
+        );
+      }
+
+      function ProfileView() {
+        const [refresh, setRefresh] = React.useState(0);
+        const [editing, setEditing] = React.useState(false);
+        const { loading, error, data } = useAsync(() => (async () => {
+          const res = await fetch(`${API}/api/profile`);
+          if (res.status === 404) return { _notFound: true };
+          if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+          return res.json();
+        })(), [refresh]);
+        if (loading) return <p>Loading...</p>;
+        if (error) return <p className="error">Error: {error.message}</p>;
+        if (data && data._notFound) return <CreateProfileForm onCreated={() => setRefresh((x) => x + 1)} />;
+        const p = data;
+
+        if (editing) {
+          return <EditProfileForm profile={p} onSaved={() => { setEditing(false); setRefresh(x => x + 1); }} onCancel={() => setEditing(false)} />;
+        }
+
+        async function deleteProfile() {
+          if (!confirm('Delete your profile? This cannot be undone.')) return;
+          try {
+            await apiRequest('/api/profile', { method: 'DELETE' });
+            setRefresh((x) => x + 1);
+          } catch (e) {
+            alert('Failed to delete profile: ' + (e && e.message ? e.message : String(e)));
+          }
+        }
+
+        return (
+          <div className="card">
+            <div className="item-header">
+              <h2 style={{margin: 0}}>{p.name}</h2>
+              <div style={{display:'flex', gap:'8px'}}>
+                <button onClick={() => setEditing(true)}>Edit Profile</button>
+                <button onClick={deleteProfile}>Delete Profile</button>
+              </div>
+            </div>
+            <p><b>Email:</b> {p.email}</p>
+            <div className="chips">
+              {(p.skills || []).map((s, i) => <span className="chip" key={i}>{s}</span>)}
+            </div>
+            <h3>Projects</h3>
+            {(p.projects || []).map((proj, i) => (
+              <div key={i} className="item">
+                <div className="item-header">
+                  <b>{proj.title}</b>
+                  <div className="chips small">
+                    {(proj.skills || []).map((s, j) => <span className="chip" key={j}>{s}</span>)}
+                  </div>
+                </div>
+                <p>{proj.description}</p>
+                <div className="links">
+                  {(proj.links || []).map((l, k) => <a key={k} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      function ProjectsView() {
+        const [skill, setSkill] = React.useState('');
+        const { loading, error, data } = useAsync(() => apiGet(`/api/projects${skill ? `?skill=${encodeURIComponent(skill)}` : ''}`), [skill]);
+        return (
+          <div className="card">
+            <div className="toolbar">
+              <input placeholder="Filter by skill (e.g., react)" value={skill} onChange={(e) => setSkill(e.target.value)} />
+            </div>
+            {loading && <p>Loading...</p>}
+            {error && <p className="error">Error: {error.message}</p>}
+            {(data || []).map((proj, i) => (
+              <div key={i} className="item">
+                <div className="item-header">
+                  <b>{proj.title}</b>
+                  <div className="chips small">
+                    {(proj.skills || []).map((s, j) => <span className="chip" key={j}>{s}</span>)}
+                  </div>
+                </div>
+                <p>{proj.description}</p>
+                <div className="links">
+                  {(proj.links || []).map((l, k) => <a key={k} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      function SearchView() {
+        const [q, setQ] = React.useState('');
+        const [result, setResult] = React.useState(null);
+        const [loading, setLoading] = React.useState(false);
+        const [error, setError] = React.useState(null);
+
+        async function doSearch(e) {
+          e && e.preventDefault();
+          if (!q.trim()) return;
+          setLoading(true); setError(null); setResult(null);
+          try {
+            const data = await apiGet(`/api/search?q=${encodeURIComponent(q)}`);
+            setResult(data);
+          } catch (err) {
+            setError(err);
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        return (
+          <div className="card">
+            <form className="toolbar" onSubmit={doSearch}>
+              <input placeholder="Search skills, projects, work..." value={q} onChange={(e) => setQ(e.target.value)} />
+              <button type="submit">Search</button>
+            </form>
+            {loading && <p>Searching...</p>}
+            {error && <p className="error">Error: {error.message}</p>}
+            {result && (
+              <div>
+                <h3>Projects</h3>
+                {(result.projects || []).map((p, i) => (
+                  <div key={i} className="item">
+                    <b>{p.title}</b>
+                    <div className="chips small">
+                      {(p.skills || []).map((s, j) => <span className="chip" key={j}>{s}</span>)}
+                    </div>
+                    <p>{p.description}</p>
+                  </div>
+                ))}
+                <h3>Skills</h3>
+                <div className="chips">
+                  {(result.skills || []).map((s, i) => <span className="chip" key={i}>{s}</span>)}
+                </div>
+                <h3>Work</h3>
+                {(result.work || []).map((w, i) => (
+                  <div key={i} className="item">
+                    <b>{w.company}</b> — {w.role}
+                    <p>{w.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function App() {
+        const [tab, setTab] = React.useState('profile');
+        return (
+          <div className="container">
+            <header>
+              <h1>Candidate Profile</h1>
+              <nav>
+                <button className={tab==='profile'?'active':''} onClick={() => setTab('profile')}>Profile</button>
+                <button className={tab==='projects'?'active':''} onClick={() => setTab('projects')}>Projects</button>
+                <button className={tab==='search'?'active':''} onClick={() => setTab('search')}>Search</button>
+              </nav>
+            </header>
+            {tab === 'profile' && <ProfileView />}
+            {tab === 'projects' && <ProjectsView />}
+            {tab === 'search' && <SearchView />}
+            {/* Footer removed as requested */}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+  </html>

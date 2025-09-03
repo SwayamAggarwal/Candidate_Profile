@@ -1,0 +1,40 @@
+{
+  "name": "Your Name",
+  "email": "you@example.com",
+  "education": [
+    {
+      "school": "University Name",
+      "degree": "B.Sc.",
+      "field": "Computer Science",
+      "startDate": "2018",
+      "endDate": "2022"
+    }
+  ],
+  "skills": ["javascript", "node", "react", "mongodb"],
+  "projects": [
+    {
+      "title": "Sample Project",
+      "description": "A brief description of the project.",
+      "skills": ["react", "node"],
+      "links": [
+        { "label": "GitHub", "url": "https://github.com/your/repo" },
+        { "label": "Live", "url": "https://example.com" }
+      ]
+    }
+  ],
+  "work": [
+    {
+      "company": "Company Inc.",
+      "role": "Software Engineer",
+      "startDate": "2023-01",
+      "endDate": "Present",
+      "description": "Worked on X, Y, Z."
+    }
+  ],
+  "links": {
+    "github": "https://github.com/your",
+    "linkedin": "https://www.linkedin.com/in/your/",
+    "portfolio": "https://your-portfolio.com"
+  }
+}
+

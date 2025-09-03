@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Candidate Profile Playground</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/config.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const API = (window.API_BASE_URL || '').replace(/\/$/, '');
+
+      async function apiGet(path) {
+        const res = await fetch(`${API}${path}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        return res.json();
+      }
+
+      function useAsync(fn, deps = []) {
+        const [state, setState] = React.useState({ loading: true, error: null, data: null });
+        React.useEffect(() => {
+          let alive = true;
+          setState({ loading: true, error: null, data: null });
+          fn().then(
+            (data) => alive && setState({ loading: false, error: null, data }),
+            (error) => alive && setState({ loading: false, error, data: null })
+          );
+          return () => { alive = false; };
+        }, deps);
+        return state;
+      }
+
+      function ProfileView() {
+        const { loading, error, data } = useAsync(() => apiGet('/api/profile'), []);
+        if (loading) return <p>Loading...</p>;
+        if (error) return <p className="error">Error: {error.message}</p>;
+        const p = data;
+        return (
+          <div className="card">
+            <h2>{p.name}</h2>
+            <p><b>Email:</b> {p.email}</p>
+            <div className="chips">
+              {(p.skills || []).map((s, i) => <span className="chip" key={i}>{s}</span>)}
+            </div>
+            <h3>Projects</h3>
+            {(p.projects || []).map((proj, i) => (
+              <div key={i} className="item">
+                <div className="item-header">
+                  <b>{proj.title}</b>
+                  <div className="chips small">
+                    {(proj.skills || []).map((s, j) => <span className="chip" key={j}>{s}</span>)}
+                  </div>
+                </div>
+                <p>{proj.description}</p>
+                <div className="links">
+                  {(proj.links || []).map((l, k) => <a key={k} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      function ProjectsView() {
+        const [skill, setSkill] = React.useState('');
+        const { loading, error, data } = useAsync(() => apiGet(`/api/projects${skill ? `?skill=${encodeURIComponent(skill)}` : ''}`), [skill]);
+        return (
+          <div className="card">
+            <div className="toolbar">
+              <input placeholder="Filter by skill (e.g., react)" value={skill} onChange={(e) => setSkill(e.target.value)} />
+            </div>
+            {loading && <p>Loading...</p>}
+            {error && <p className="error">Error: {error.message}</p>}
+            {(data || []).map((proj, i) => (
+              <div key={i} className="item">
+                <div className="item-header">
+                  <b>{proj.title}</b>
+                  <div className="chips small">
+                    {(proj.skills || []).map((s, j) => <span className="chip" key={j}>{s}</span>)}
+                  </div>
+                </div>
+                <p>{proj.description}</p>
+                <div className="links">
+                  {(proj.links || []).map((l, k) => <a key={k} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      function SearchView() {
+        const [q, setQ] = React.useState('');
+        const [result, setResult] = React.useState(null);
+        const [loading, setLoading] = React.useState(false);
+        const [error, setError] = React.useState(null);
+
+        async function doSearch(e) {
+          e && e.preventDefault();
+          if (!q.trim()) return;
+          setLoading(true); setError(null); setResult(null);
+          try {
+            const data = await apiGet(`/api/search?q=${encodeURIComponent(q)}`);
+            setResult(data);
+          } catch (err) {
+            setError(err);
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        return (
+          <div className="card">
+            <form className="toolbar" onSubmit={doSearch}>
+              <input placeholder="Search skills, projects, work..." value={q} onChange={(e) => setQ(e.target.value)} />
+              <button type="submit">Search</button>
+            </form>
+            {loading && <p>Searching...</p>}
+            {error && <p className="error">Error: {error.message}</p>}
+            {result && (
+              <div>
+                <h3>Projects</h3>
+                {(result.projects || []).map((p, i) => (
+                  <div key={i} className="item">
+                    <b>{p.title}</b>
+                    <div className="chips small">
+                      {(p.skills || []).map((s, j) => <span className="chip" key={j}>{s}</span>)}
+                    </div>
+                    <p>{p.description}</p>
+                  </div>
+                ))}
+                <h3>Skills</h3>
+                <div className="chips">
+                  {(result.skills || []).map((s, i) => <span className="chip" key={i}>{s}</span>)}
+                </div>
+                <h3>Work</h3>
+                {(result.work || []).map((w, i) => (
+                  <div key={i} className="item">
+                    <b>{w.company}</b> — {w.role}
+                    <p>{w.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function App() {
+        const [tab, setTab] = React.useState('profile');
+        return (
+          <div className="container">
+            <header>
+              <h1>Candidate Profile</h1>
+              <nav>
+                <button className={tab==='profile'?'active':''} onClick={() => setTab('profile')}>Profile</button>
+                <button className={tab==='projects'?'active':''} onClick={() => setTab('projects')}>Projects</button>
+                <button className={tab==='search'?'active':''} onClick={() => setTab('search')}>Search</button>
+              </nav>
+            </header>
+            {tab === 'profile' && <ProfileView />}
+            {tab === 'projects' && <ProjectsView />}
+            {tab === 'search' && <SearchView />}
+            <footer>
+              <small>API: {API || window.location.origin}</small>
+            </footer>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+  </html>
+

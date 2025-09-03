@@ -1,0 +1,23 @@
+node_modules/
+.env
+server/.env
+
+logs/
+*.log
+server/logs/
+
+.DS_Store
+Thumbs.db
+
+dist/
+build/
+server/dist/
+client/dist/
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+server/dist/
+client/dist/

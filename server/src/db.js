@@ -12,6 +12,10 @@ async function connectDB(uri) {
     user: MONGODB_USER || undefined,
     pass: MONGODB_PASS || undefined,
     authSource: AUTH_SOURCE || undefined,
+    // Fail fast on serverless cold starts / Atlas IP allowlist issues
+    serverSelectionTimeoutMS: 5000,
+    connectTimeoutMS: 5000,
+    socketTimeoutMS: 10000,
   });
   return mongoose.connection;
 }

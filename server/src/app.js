@@ -49,6 +49,8 @@ function createApp() {
 
   // Health
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  // Also expose health under /api to work behind Vercel rewrite
+  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
   // API routes
   app.use('/api/profile', profileRouter);

@@ -7,10 +7,10 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/health", "destination": "/api/index.js" },
     { "source": "/style.css", "destination": "/client/style.css" },
     { "source": "/config.js", "destination": "/client/config.js" },
     { "source": "/", "destination": "/client/index.html" },
     { "source": "/(.*)", "destination": "/client/index.html" }
   ]
 }
-

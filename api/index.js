@@ -8,17 +8,19 @@ const { createApp } = require('../server/src/app');
 const { connectDB } = require('../server/src/db');
 
 let mongoReady = null;
+let isConnected = false;
 const app = createApp();
 const handler = serverless(app);
 
 module.exports = async (req, res) => {
   try {
-    if (!mongoReady) {
+    if (!isConnected) {
       const uri = process.env.MONGODB_URI;
       if (!uri) throw new Error('Missing MONGODB_URI');
       mongoReady = connectDB(uri);
+      await mongoReady;
+      isConnected = true;
     }
-    await mongoReady;
   } catch (err) {
     console.error('DB connect error:', err && err.message ? err.message : err);
     res.statusCode = 500;
